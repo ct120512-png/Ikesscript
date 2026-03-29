@@ -22,18 +22,21 @@ local flying, flyConnection = false, nil
 local currentSpeed = 16
 local guiOpen = true
 local activeTab = "Misc"
+local infJumpEnabled = false
+local noclipEnabled = false
+local noclipConnection
 
 -- Aimbot
 local aimbotEnabled = false
 local aimbotFOV = 150
-local aimbotSmoothing = 1 -- 1 = instant lock
+local aimbotSmoothing = 1
 local aimbotTarget = "Head"
 local aimbotHoldMode = true
 local aimbotToggled = false
 local aimbotKey = Enum.KeyCode.Q
 local listeningForKey = false
 local currentLockedTarget = nil
-local lockIndicatorType = "Circle" -- Circle or Cross
+local lockIndicatorType = "Circle"
 
 -- ESP
 local espEnabled = false
@@ -81,14 +84,11 @@ local function sendNotif(text, color)
     notif.BackgroundColor3 = THEME.panel
     notif.BorderSizePixel = 0
     notif.Parent = notifGui
-
     local stroke = Instance.new("UIStroke")
     stroke.Color = color
     stroke.Thickness = 2
     stroke.Parent = notif
-
     Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
-
     local dot = Instance.new("Frame")
     dot.Size = UDim2.new(0, 8, 0, 8)
     dot.Position = UDim2.new(0, 10, 0.5, -4)
@@ -96,7 +96,6 @@ local function sendNotif(text, color)
     dot.BorderSizePixel = 0
     dot.Parent = notif
     Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
     local nl = Instance.new("TextLabel")
     nl.Size = UDim2.new(1, -30, 1, 0)
     nl.Position = UDim2.new(0, 26, 0, 0)
@@ -107,10 +106,8 @@ local function sendNotif(text, color)
     nl.TextSize = 13
     nl.TextXAlignment = Enum.TextXAlignment.Left
     nl.Parent = notif
-
     TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
         {Position = UDim2.new(1, -255, 1, -60)}):Play()
-
     task.delay(2.5, function()
         local t = TweenService:Create(notif, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
             {Position = UDim2.new(1, 10, 1, -60)})
@@ -134,7 +131,6 @@ lockCircle.Visible = false
 lockCircle.Parent = lockGui
 Instance.new("UICorner", lockCircle).CornerRadius = UDim.new(1, 0)
 
--- Cross indicator (two frames forming a +)
 local lockCrossH = Instance.new("Frame")
 lockCrossH.Size = UDim2.new(0, 24, 0, 3)
 lockCrossH.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
@@ -185,7 +181,6 @@ frame.Active = true
 frame.Draggable = true
 frame.ClipsDescendants = true
 frame.Parent = screenGui
-
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
 
 local mainStroke = Instance.new("UIStroke")
@@ -193,7 +188,6 @@ mainStroke.Color = THEME.accent
 mainStroke.Thickness = 1.5
 mainStroke.Parent = frame
 
--- Title Bar
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 42)
 titleBar.BackgroundColor3 = THEME.panel
@@ -212,7 +206,6 @@ titleLabel.TextSize = 16
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = titleBar
 
--- Tab Bar
 local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, 0, 0, 36)
 tabBar.Position = UDim2.new(0, 0, 0, 42)
@@ -281,7 +274,6 @@ local function makeTab(name, order)
     return btn
 end
 
--- Helpers
 local function makeSection(page, text, yPos)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1, -24, 0, 26)
@@ -340,7 +332,6 @@ local function makeSlider(page, yPos, minVal, maxVal, defaultVal, onChanged)
     bg.BorderSizePixel = 0
     bg.Parent = page
     Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
-
     local ratio0 = (defaultVal - minVal) / (maxVal - minVal)
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new(ratio0, 0, 1, 0)
@@ -348,7 +339,6 @@ local function makeSlider(page, yPos, minVal, maxVal, defaultVal, onChanged)
     fill.BorderSizePixel = 0
     fill.Parent = bg
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
     local handle = Instance.new("TextButton")
     handle.Size = UDim2.new(0, 18, 0, 18)
     handle.Position = UDim2.new(ratio0, -9, 0.5, -9)
@@ -357,7 +347,6 @@ local function makeSlider(page, yPos, minVal, maxVal, defaultVal, onChanged)
     handle.BorderSizePixel = 0
     handle.Parent = bg
     Instance.new("UICorner", handle).CornerRadius = UDim.new(1, 0)
-
     local dragging = false
     handle.MouseButton1Down:Connect(function() dragging = true end)
     UserInputService.InputEnded:Connect(function(i)
@@ -432,9 +421,6 @@ makeTab("Settings", 5)
 -- ══════════════════
 -- MISC TAB
 -- ══════════════════
--- ══════════════════
--- MISC TAB
--- ══════════════════
 local miscPage = makeTabPage("Misc")
 makeSection(miscPage, "Movement", 10)
 
@@ -456,10 +442,6 @@ makeToggleBtn(miscPage, "Infinite Jump", 136, false, function(v)
     sendNotif(v and "Inf Jump ON" or "Inf Jump OFF")
 end)
 
--- Noclip
-local noclipEnabled = false
-local noclipConnection
-
 makeToggleBtn(miscPage, "Noclip", 178, false, function(v)
     noclipEnabled = v
     sendNotif(v and "Noclip ON" or "Noclip OFF")
@@ -467,7 +449,7 @@ makeToggleBtn(miscPage, "Noclip", 178, false, function(v)
         noclipConnection = RunService.Stepped:Connect(function()
             if noclipEnabled and character then
                 for _, part in ipairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
+                    if part:IsA("BasePart") then
                         part.CanCollide = false
                     end
                 end
@@ -478,7 +460,6 @@ makeToggleBtn(miscPage, "Noclip", 178, false, function(v)
             noclipConnection:Disconnect()
             noclipConnection = nil
         end
-        -- Re-enable collision
         if character then
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
@@ -486,6 +467,12 @@ makeToggleBtn(miscPage, "Noclip", 178, false, function(v)
                 end
             end
         end
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if infJumpEnabled and character and humanoid then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end)
 
@@ -531,6 +518,7 @@ unloadBtn.MouseButton1Click:Connect(function()
     notifGui:Destroy()
     lockGui:Destroy()
 end)
+
 -- ══════════════════
 -- FLY TAB
 -- ══════════════════
@@ -563,19 +551,16 @@ local function startFly()
     flyBtn.Text = "Fly: ON"
     flyBtn.BackgroundColor3 = THEME.btnActive
     humanoid.PlatformStand = true
-
     local bodyPos = Instance.new("BodyPosition")
     bodyPos.Name = "FlyBodyPosition"
     bodyPos.MaxForce = Vector3.new(1e5, 1e5, 1e5)
     bodyPos.Position = rootPart.Position
     bodyPos.Parent = rootPart
-
     local bodyGyro = Instance.new("BodyGyro")
     bodyGyro.Name = "FlyBodyGyro"
     bodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
     bodyGyro.CFrame = rootPart.CFrame
     bodyGyro.Parent = rootPart
-
     flyConnection = RunService.Heartbeat:Connect(function()
         if not flying then return end
         local cam = workspace.CurrentCamera
@@ -633,14 +618,10 @@ makeSlider(aimPage, 184, 10, 600, 150, function(val)
     fovLbl.Text = "FOV: " .. val
 end)
 
-local smoothLbl = makeLabel(aimPage, "Smoothing: instant (1.0)", 208)
+local smoothLbl = makeLabel(aimPage, "Smoothing: instant", 208)
 makeSlider(aimPage, 230, 1, 10, 10, function(val)
     aimbotSmoothing = val / 10
-    if aimbotSmoothing >= 1 then
-        smoothLbl.Text = "Smoothing: instant (1.0)"
-    else
-        smoothLbl.Text = "Smoothing: " .. string.format("%.1f", aimbotSmoothing)
-    end
+    smoothLbl.Text = aimbotSmoothing >= 1 and "Smoothing: instant" or "Smoothing: " .. string.format("%.1f", aimbotSmoothing)
 end)
 
 makeSection(aimPage, "Lock Target", 258)
@@ -792,7 +773,7 @@ keyBindBtn.MouseButton1Click:Connect(function()
     end)
 end)
 
--- Aimbot loop — hard lock, camera snaps directly to target
+-- Aimbot loop
 local function getClosestPlayer()
     local closest, closestDist = nil, aimbotFOV
     local cx, cy = Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2
@@ -819,10 +800,8 @@ RunService.Heartbeat:Connect(function()
         end
         return
     end
-
     local active = aimbotHoldMode and UserInputService:IsKeyDown(aimbotKey)
         or (not aimbotHoldMode and aimbotToggled)
-
     if not active then
         if currentLockedTarget then
             currentLockedTarget = nil
@@ -830,15 +809,11 @@ RunService.Heartbeat:Connect(function()
         end
         return
     end
-
     local target = getClosestPlayer()
     if target then
         currentLockedTarget = target
-        -- Hard lock: directly set camera CFrame to face target, lerp only for smoothing
         local targetCF = CFrame.new(Camera.CFrame.Position, target.Position)
         Camera.CFrame = Camera.CFrame:Lerp(targetCF, math.clamp(aimbotSmoothing, 0.1, 1))
-
-        -- Show indicator on screen
         local sp, onScreen = Camera:WorldToViewportPoint(target.Position)
         if onScreen then
             showLockIndicator(sp.X, sp.Y)
@@ -856,7 +831,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == aimbotKey and not aimbotHoldMode then
         aimbotToggled = not aimbotToggled
         if not aimbotToggled then hideLockIndicator() end
-        sendNotif(aimbotToggled and "Aimbot toggled ON" or "Aimbot toggled OFF",
+        sendNotif(aimbotToggled and "Aimbot ON" or "Aimbot OFF",
             aimbotToggled and THEME.green or THEME.red)
     end
     if input.KeyCode == guiToggleKey then
@@ -907,13 +882,13 @@ makeToggleBtn(espPage, "Distance", 246, true,  function(v) espDistance = v end)
 makeToggleBtn(espPage, "Tracers",  288, false, function(v) espTracers = v end)
 
 makeSection(espPage, "Colors", 340)
-makeColorPicker(espPage, "Box Color",    374, function(c)
+makeColorPicker(espPage, "Box Color", 374, function(c)
     espBoxColor = c
     for _, objs in pairs(espObjects) do
         if objs.box then objs.box.BorderColor3 = c end
     end
 end)
-makeColorPicker(espPage, "Name Color",   422, function(c)
+makeColorPicker(espPage, "Name Color", 422, function(c)
     espNameColor = c
     for _, objs in pairs(espObjects) do
         if objs.nameTag then objs.nameTag.TextColor3 = c end
@@ -926,7 +901,6 @@ makeColorPicker(espPage, "Tracer Color", 470, function(c)
     end
 end)
 
--- ESP GUI
 local espGui = Instance.new("ScreenGui")
 espGui.Name = "ESPGui"
 espGui.ResetOnSpawn = false
@@ -944,7 +918,6 @@ end
 local function getESPObjects(p)
     if not espObjects[p] then
         espObjects[p] = {}
-
         local box = Instance.new("Frame")
         box.BackgroundTransparency = 1
         box.BorderSizePixel = 2
@@ -952,7 +925,6 @@ local function getESPObjects(p)
         box.Visible = false
         box.Parent = espGui
         espObjects[p].box = box
-
         local nameTag = Instance.new("TextLabel")
         nameTag.BackgroundTransparency = 1
         nameTag.TextColor3 = espNameColor
@@ -962,7 +934,6 @@ local function getESPObjects(p)
         nameTag.Visible = false
         nameTag.Parent = espGui
         espObjects[p].nameTag = nameTag
-
         local tracer = Instance.new("Frame")
         tracer.BackgroundColor3 = espTracerColor
         tracer.BorderSizePixel = 0
@@ -976,57 +947,42 @@ end
 Players.PlayerRemoving:Connect(cleanupESPForPlayer)
 
 RunService.RenderStepped:Connect(function()
-    -- Clean up players who left
     local allPlayers = {}
     for _, p in ipairs(Players:GetPlayers()) do allPlayers[p] = true end
     for p in pairs(espObjects) do
         if not allPlayers[p] then cleanupESPForPlayer(p) end
     end
-
     if not espEnabled then return end
-
     for _, p in ipairs(Players:GetPlayers()) do
         if p == player then continue end
-
         if not p.Character then cleanupESPForPlayer(p) continue end
-
         local hrp  = p.Character:FindFirstChild("HumanoidRootPart")
         local head = p.Character:FindFirstChild("Head")
-
         if not hrp or not head then cleanupESPForPlayer(p) continue end
-
         local objs = getESPObjects(p)
         local screenPos, onScreen   = Camera:WorldToViewportPoint(hrp.Position)
         local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.7, 0))
-
         if not onScreen or not headOnScreen then
-            objs.box.Visible     = false
+            objs.box.Visible = false
             objs.nameTag.Visible = false
-            objs.tracer.Visible  = false
+            objs.tracer.Visible = false
             continue
         end
-
         local height = math.abs(screenPos.Y - headPos.Y) * 2.2
         local width  = height * 0.55
         local dist   = math.floor((rootPart.Position - hrp.Position).Magnitude)
-
-        -- Box
-        objs.box.Visible       = espBoxes
-        objs.box.BorderColor3  = espBoxColor
-        objs.box.Size          = UDim2.new(0, width, 0, height)
-        objs.box.Position      = UDim2.new(0, headPos.X - width/2, 0, headPos.Y)
-
-        -- Name/Distance
-        objs.nameTag.Visible      = espNames or espDistance
-        objs.nameTag.TextColor3   = espNameColor
+        objs.box.Visible      = espBoxes
+        objs.box.BorderColor3 = espBoxColor
+        objs.box.Size         = UDim2.new(0, width, 0, height)
+        objs.box.Position     = UDim2.new(0, headPos.X - width/2, 0, headPos.Y)
+        objs.nameTag.Visible    = espNames or espDistance
+        objs.nameTag.TextColor3 = espNameColor
         local txt = espNames and p.Name or ""
         if espDistance then txt = txt .. (espNames and " [" or "[") .. dist .. "m]" end
         objs.nameTag.Text     = txt
         objs.nameTag.Size     = UDim2.new(0, 200, 0, 18)
         objs.nameTag.Position = UDim2.new(0, headPos.X - 100, 0, headPos.Y - 22)
-
-        -- Tracer
-        objs.tracer.Visible         = espTracers
+        objs.tracer.Visible          = espTracers
         objs.tracer.BackgroundColor3 = espTracerColor
         local botX = Camera.ViewportSize.X / 2
         local botY = Camera.ViewportSize.Y
@@ -1046,7 +1002,6 @@ local settingsPage = makeTabPage("Settings")
 makeSection(settingsPage, "GUI Toggle Key", 10)
 
 local guiKeyLbl = makeLabel(settingsPage, "Current key: Y", 44)
-
 local guiKeyBtn = makeBtn(settingsPage, "Change Key (click then press key)", 66)
 guiKeyBtn.MouseButton1Click:Connect(function()
     if listeningForGuiKey then return end
@@ -1138,7 +1093,7 @@ for _, style in ipairs(animStyles) do
     end)
 end
 
-makeSection(settingsPage, "Open / Close Speed", 286)
+makeSection(settingsPage, "Speed", 286)
 local openSpeedVal = 0.35
 local closeSpeedVal = 0.25
 
