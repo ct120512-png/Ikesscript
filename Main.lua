@@ -1056,6 +1056,7 @@ end)
 -- SETTINGS TAB
 -- ══════════════════
 local settingsPage = makeTabPage("Settings")
+settingsPage.CanvasSize = UDim2.new(0, 0, 0, 800)
 makeSection(settingsPage, "GUI Toggle Key", 10)
 
 local guiKeyLbl = makeLabel(settingsPage, "Current key: Y", 44)
