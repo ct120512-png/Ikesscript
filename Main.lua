@@ -1,9 +1,8 @@
--- LocalScript inside StarterPlayerScripts or StarterCharacterScripts
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local Camera = workspace.CurrentCamera
 
 local player = Players.LocalPlayer
@@ -21,10 +20,10 @@ end)
 local flying, flyConnection = false, nil
 local currentSpeed = 16
 local guiOpen = true
-local activeTab = "Misc"
 local infJumpEnabled = false
 local noclipEnabled = false
 local noclipConnection
+local flyVelocity, flyGyro = nil, nil
 
 -- Aimbot
 local aimbotEnabled = false
@@ -52,25 +51,32 @@ local espObjects = {}
 -- Settings
 local guiToggleKey = Enum.KeyCode.Y
 local listeningForGuiKey = false
+local currentOpenStyle = "Quad"
+local currentCloseStyle = "Quad"
+local openSpeedVal = 0.3
+local closeSpeedVal = 0.2
+local flySpeedVal = 1.2
 
 -- Theme
 local THEME = {
-    bg         = Color3.fromRGB(20, 20, 20),
-    panel      = Color3.fromRGB(30, 30, 30),
-    accent     = Color3.fromRGB(55, 55, 55),
-    highlight  = Color3.fromRGB(180, 180, 180),
+    bg         = Color3.fromRGB(15, 15, 15),
+    panel      = Color3.fromRGB(22, 22, 22),
+    card       = Color3.fromRGB(28, 28, 28),
+    border     = Color3.fromRGB(40, 40, 40),
+    tabActive  = Color3.fromRGB(255, 255, 255),
+    tabInactive= Color3.fromRGB(80, 80, 80),
+    tabBg      = Color3.fromRGB(30, 30, 30),
+    tabActiveBg= Color3.fromRGB(45, 45, 45),
     text       = Color3.new(1, 1, 1),
-    subtext    = Color3.fromRGB(160, 160, 160),
+    subtext    = Color3.fromRGB(130, 130, 130),
+    accent     = Color3.fromRGB(100, 100, 255),
     green      = Color3.fromRGB(0, 200, 80),
-    red        = Color3.fromRGB(200, 40, 40),
-    tabActive  = Color3.fromRGB(65, 65, 65),
-    tabInactive= Color3.fromRGB(35, 35, 35),
-    btn        = Color3.fromRGB(50, 50, 50),
-    btnActive  = Color3.fromRGB(75, 75, 75),
-    section    = Color3.fromRGB(40, 40, 40),
+    red        = Color3.fromRGB(220, 50, 50),
+    toggleOn   = Color3.fromRGB(100, 100, 255),
+    toggleOff  = Color3.fromRGB(50, 50, 50),
 }
 
--- Notif GUI
+-- Notif
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name = "NotifGui"
 notifGui.ResetOnSpawn = false
@@ -79,84 +85,84 @@ notifGui.Parent = player.PlayerGui
 local function sendNotif(text, color)
     color = color or THEME.accent
     local notif = Instance.new("Frame")
-    notif.Size = UDim2.new(0, 240, 0, 42)
-    notif.Position = UDim2.new(1, 10, 1, -60)
+    notif.Size = UDim2.new(0, 220, 0, 38)
+    notif.Position = UDim2.new(1, 10, 1, -55)
     notif.BackgroundColor3 = THEME.panel
     notif.BorderSizePixel = 0
     notif.Parent = notifGui
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
     local stroke = Instance.new("UIStroke")
     stroke.Color = color
-    stroke.Thickness = 2
+    stroke.Thickness = 1
     stroke.Parent = notif
-    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
     local dot = Instance.new("Frame")
-    dot.Size = UDim2.new(0, 8, 0, 8)
-    dot.Position = UDim2.new(0, 10, 0.5, -4)
+    dot.Size = UDim2.new(0, 6, 0, 6)
+    dot.Position = UDim2.new(0, 10, 0.5, -3)
     dot.BackgroundColor3 = color
     dot.BorderSizePixel = 0
     dot.Parent = notif
     Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
     local nl = Instance.new("TextLabel")
-    nl.Size = UDim2.new(1, -30, 1, 0)
-    nl.Position = UDim2.new(0, 26, 0, 0)
+    nl.Size = UDim2.new(1, -26, 1, 0)
+    nl.Position = UDim2.new(0, 24, 0, 0)
     nl.BackgroundTransparency = 1
     nl.TextColor3 = THEME.text
     nl.Text = text
     nl.Font = Enum.Font.GothamBold
-    nl.TextSize = 13
+    nl.TextSize = 12
     nl.TextXAlignment = Enum.TextXAlignment.Left
     nl.Parent = notif
-    TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-        {Position = UDim2.new(1, -255, 1, -60)}):Play()
-    task.delay(2.5, function()
-        local t = TweenService:Create(notif, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-            {Position = UDim2.new(1, 10, 1, -60)})
+    TweenService:Create(notif, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+        {Position = UDim2.new(1, -230, 1, -55)}):Play()
+    task.delay(2.2, function()
+        local t = TweenService:Create(notif, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+            {Position = UDim2.new(1, 10, 1, -55)})
         t:Play()
         t.Completed:Connect(function() notif:Destroy() end)
     end)
 end
 
--- Lock indicator GUI
+-- Lock indicator
 local lockGui = Instance.new("ScreenGui")
 lockGui.Name = "LockGui"
 lockGui.ResetOnSpawn = false
 lockGui.Parent = player.PlayerGui
 
 local lockCircle = Instance.new("Frame")
-lockCircle.Size = UDim2.new(0, 30, 0, 30)
+lockCircle.Size = UDim2.new(0, 28, 0, 28)
 lockCircle.BackgroundTransparency = 1
-lockCircle.BorderSizePixel = 3
-lockCircle.BorderColor3 = Color3.fromRGB(255, 50, 50)
+lockCircle.BorderSizePixel = 2
+lockCircle.BorderColor3 = THEME.red
 lockCircle.Visible = false
 lockCircle.Parent = lockGui
 Instance.new("UICorner", lockCircle).CornerRadius = UDim.new(1, 0)
 
 local lockCrossH = Instance.new("Frame")
-lockCrossH.Size = UDim2.new(0, 24, 0, 3)
-lockCrossH.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+lockCrossH.Size = UDim2.new(0, 20, 0, 2)
+lockCrossH.BackgroundColor3 = THEME.red
 lockCrossH.BorderSizePixel = 0
 lockCrossH.Visible = false
 lockCrossH.Parent = lockGui
 
 local lockCrossV = Instance.new("Frame")
-lockCrossV.Size = UDim2.new(0, 3, 0, 24)
-lockCrossV.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+lockCrossV.Size = UDim2.new(0, 2, 0, 20)
+lockCrossV.BackgroundColor3 = THEME.red
 lockCrossV.BorderSizePixel = 0
 lockCrossV.Visible = false
 lockCrossV.Parent = lockGui
 
-local function showLockIndicator(screenX, screenY)
+local function showLockIndicator(x, y)
     if lockIndicatorType == "Circle" then
         lockCircle.Visible = true
         lockCrossH.Visible = false
         lockCrossV.Visible = false
-        lockCircle.Position = UDim2.new(0, screenX - 15, 0, screenY - 15)
+        lockCircle.Position = UDim2.new(0, x - 14, 0, y - 14)
     else
         lockCircle.Visible = false
         lockCrossH.Visible = true
         lockCrossV.Visible = true
-        lockCrossH.Position = UDim2.new(0, screenX - 12, 0, screenY - 1)
-        lockCrossV.Position = UDim2.new(0, screenX - 1, 0, screenY - 12)
+        lockCrossH.Position = UDim2.new(0, x - 10, 0, y - 1)
+        lockCrossV.Position = UDim2.new(0, x - 1, 0, y - 10)
     end
 end
 
@@ -173,61 +179,73 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = player.PlayerGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 420, 0, 500)
-frame.Position = UDim2.new(0.5, -210, 0.5, -250)
+frame.Size = UDim2.new(0, 380, 0, 480)
+frame.Position = UDim2.new(0.5, -190, 0.5, -240)
 frame.BackgroundColor3 = THEME.bg
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.ClipsDescendants = true
 frame.Parent = screenGui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 
-local mainStroke = Instance.new("UIStroke")
-mainStroke.Color = THEME.accent
-mainStroke.Thickness = 1.5
-mainStroke.Parent = frame
+local frameBorder = Instance.new("UIStroke")
+frameBorder.Color = THEME.border
+frameBorder.Thickness = 1
+frameBorder.Parent = frame
 
+-- Title bar
 local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 42)
+titleBar.Size = UDim2.new(1, 0, 0, 40)
 titleBar.BackgroundColor3 = THEME.panel
 titleBar.BorderSizePixel = 0
 titleBar.Parent = frame
-Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
+
+-- fix title bar bottom corners
+local titleFix = Instance.new("Frame")
+titleFix.Size = UDim2.new(1, 0, 0, 10)
+titleFix.Position = UDim2.new(0, 0, 1, -10)
+titleFix.BackgroundColor3 = THEME.panel
+titleFix.BorderSizePixel = 0
+titleFix.Parent = titleBar
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -10, 1, 0)
+titleLabel.Size = UDim2.new(1, -16, 1, 0)
 titleLabel.Position = UDim2.new(0, 14, 0, 0)
 titleLabel.BackgroundTransparency = 1
 titleLabel.TextColor3 = THEME.text
 titleLabel.Text = "Ike's Script"
 titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 16
+titleLabel.TextSize = 14
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = titleBar
 
+-- Tab bar
 local tabBar = Instance.new("Frame")
-tabBar.Size = UDim2.new(1, 0, 0, 36)
-tabBar.Position = UDim2.new(0, 0, 0, 42)
-tabBar.BackgroundColor3 = THEME.panel
-tabBar.BorderSizePixel = 0
+tabBar.Size = UDim2.new(1, -20, 0, 30)
+tabBar.Position = UDim2.new(0, 10, 0, 48)
+tabBar.BackgroundTransparency = 1
 tabBar.Parent = frame
 
 local tabLayout = Instance.new("UIListLayout")
 tabLayout.FillDirection = Enum.FillDirection.Horizontal
 tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 4)
 tabLayout.Parent = tabBar
 
+-- Divider
 local divider = Instance.new("Frame")
 divider.Size = UDim2.new(1, 0, 0, 1)
-divider.Position = UDim2.new(0, 0, 0, 78)
-divider.BackgroundColor3 = THEME.accent
+divider.Position = UDim2.new(0, 0, 0, 86)
+divider.BackgroundColor3 = THEME.border
 divider.BorderSizePixel = 0
 divider.Parent = frame
 
+-- Content
 local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, 0, 1, -79)
-contentFrame.Position = UDim2.new(0, 0, 0, 79)
+contentFrame.Size = UDim2.new(1, 0, 1, -87)
+contentFrame.Position = UDim2.new(0, 0, 0, 87)
 contentFrame.BackgroundTransparency = 1
 contentFrame.ClipsDescendants = true
 contentFrame.Parent = frame
@@ -235,14 +253,14 @@ contentFrame.Parent = frame
 local tabPages = {}
 local tabButtons = {}
 
-local function makeTabPage(name)
+local function makeTabPage(name, canvasH)
     local page = Instance.new("ScrollingFrame")
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.ScrollBarThickness = 3
-    page.ScrollBarImageColor3 = THEME.accent
-    page.CanvasSize = UDim2.new(0, 0, 0, 620)
+    page.ScrollBarThickness = 2
+    page.ScrollBarImageColor3 = THEME.border
+    page.CanvasSize = UDim2.new(0, 0, 0, canvasH or 600)
     page.Visible = false
     page.Parent = contentFrame
     tabPages[name] = page
@@ -250,56 +268,142 @@ local function makeTabPage(name)
 end
 
 local function switchTab(name)
-    for n, page in pairs(tabPages) do page.Visible = (n == name) end
-    for n, btn in pairs(tabButtons) do
-        btn.BackgroundColor3 = n == name and THEME.tabActive or THEME.tabInactive
-        btn.TextColor3 = n == name and THEME.text or THEME.subtext
+    for n, page in pairs(tabPages) do
+        if n == name then
+            page.Visible = true
+        else
+            page.Visible = false
+        end
     end
-    activeTab = name
+    for n, btn in pairs(tabButtons) do
+        if n == name then
+            btn.TextColor3 = THEME.text
+            btn.BackgroundColor3 = THEME.tabActiveBg
+            TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quint),
+                {BackgroundColor3 = THEME.tabActiveBg, TextColor3 = THEME.text}):Play()
+        else
+            TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quint),
+                {BackgroundColor3 = THEME.tabBg, TextColor3 = THEME.tabInactive}):Play()
+        end
+    end
 end
 
 local function makeTab(name, order)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 84, 1, 0)
-    btn.BackgroundColor3 = THEME.tabInactive
-    btn.TextColor3 = THEME.subtext
+    btn.Size = UDim2.new(0, 70, 1, 0)
+    btn.BackgroundColor3 = THEME.tabBg
+    btn.TextColor3 = THEME.tabInactive
     btn.Text = name
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 12
     btn.BorderSizePixel = 0
     btn.LayoutOrder = order
     btn.Parent = tabBar
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     tabButtons[name] = btn
     btn.MouseButton1Click:Connect(function() switchTab(name) end)
     return btn
 end
 
+-- Helpers
 local function makeSection(page, text, yPos)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, -24, 0, 26)
-    f.Position = UDim2.new(0, 12, 0, yPos)
-    f.BackgroundColor3 = THEME.section
-    f.BorderSizePixel = 0
-    f.Parent = page
-    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
-    local fl = Instance.new("TextLabel")
-    fl.Size = UDim2.new(1, -10, 1, 0)
-    fl.Position = UDim2.new(0, 10, 0, 0)
-    fl.BackgroundTransparency = 1
-    fl.TextColor3 = THEME.subtext
-    fl.Text = text
-    fl.Font = Enum.Font.GothamBold
-    fl.TextSize = 12
-    fl.TextXAlignment = Enum.TextXAlignment.Left
-    fl.Parent = f
-    return f
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -24, 0, 20)
+    lbl.Position = UDim2.new(0, 14, 0, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = THEME.subtext
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = page
+    return lbl
 end
 
-local function makeBtn(page, text, yPos, active)
+local function makeLabel(page, text, yPos)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -24, 0, 18)
+    lbl.Position = UDim2.new(0, 14, 0, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = THEME.subtext
+    lbl.Text = text
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = page
+    return lbl
+end
+
+local function makeRow(page, yPos)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -20, 0, 38)
+    row.Position = UDim2.new(0, 10, 0, yPos)
+    row.BackgroundColor3 = THEME.card
+    row.BorderSizePixel = 0
+    row.Parent = page
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
+    return row
+end
+
+local function makeRowLabel(row, text)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.6, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = THEME.text
+    lbl.Text = text
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+    return lbl
+end
+
+-- Toggle switch
+local function makeToggle(page, text, yPos, default, onToggle)
+    local row = makeRow(page, yPos)
+    makeRowLabel(row, text)
+
+    local switchBg = Instance.new("Frame")
+    switchBg.Size = UDim2.new(0, 40, 0, 22)
+    switchBg.Position = UDim2.new(1, -52, 0.5, -11)
+    switchBg.BackgroundColor3 = default and THEME.toggleOn or THEME.toggleOff
+    switchBg.BorderSizePixel = 0
+    switchBg.Parent = row
+    Instance.new("UICorner", switchBg).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = default and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1, 1, 1)
+    knob.BorderSizePixel = 0
+    knob.Parent = switchBg
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local state = default
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -24, 0, 36)
-    btn.Position = UDim2.new(0, 12, 0, yPos)
-    btn.BackgroundColor3 = active and THEME.btnActive or THEME.btn
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = row
+
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        TweenService:Create(switchBg, TweenInfo.new(0.2, Enum.EasingStyle.Quint),
+            {BackgroundColor3 = state and THEME.toggleOn or THEME.toggleOff}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.2, Enum.EasingStyle.Quint),
+            {Position = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)}):Play()
+        onToggle(state)
+    end)
+
+    return row, function() return state end
+end
+
+local function makeBtn(page, text, yPos, color)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -20, 0, 36)
+    btn.Position = UDim2.new(0, 10, 0, yPos)
+    btn.BackgroundColor3 = color or THEME.card
     btn.TextColor3 = THEME.text
     btn.Text = text
     btn.Font = Enum.Font.GothamBold
@@ -307,46 +411,49 @@ local function makeBtn(page, text, yPos, active)
     btn.BorderSizePixel = 0
     btn.Parent = page
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+
+    btn.MouseButton1Down:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.1, Enum.EasingStyle.Quint),
+            {BackgroundColor3 = Color3.fromRGB(
+                math.clamp((btn.BackgroundColor3.R * 255) - 15, 0, 255),
+                math.clamp((btn.BackgroundColor3.G * 255) - 15, 0, 255),
+                math.clamp((btn.BackgroundColor3.B * 255) - 15, 0, 255)
+            )}):Play()
+    end)
+    btn.MouseButton1Up:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.1, Enum.EasingStyle.Quint),
+            {BackgroundColor3 = color or THEME.card}):Play()
+    end)
     return btn
 end
 
-local function makeLabel(page, text, yPos)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -24, 0, 20)
-    lbl.Position = UDim2.new(0, 12, 0, yPos)
-    lbl.BackgroundTransparency = 1
-    lbl.TextColor3 = THEME.subtext
-    lbl.Text = text
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 12
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = page
-    return lbl
-end
-
-local function makeSlider(page, yPos, minVal, maxVal, defaultVal, onChanged)
+local function makeSlider(page, yPos, label, minVal, maxVal, defaultVal, onChanged)
+    local lbl = makeLabel(page, label .. ": " .. defaultVal, yPos)
     local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(1, -24, 0, 14)
-    bg.Position = UDim2.new(0, 12, 0, yPos)
-    bg.BackgroundColor3 = THEME.accent
+    bg.Size = UDim2.new(1, -20, 0, 4)
+    bg.Position = UDim2.new(0, 10, 0, yPos + 22)
+    bg.BackgroundColor3 = THEME.border
     bg.BorderSizePixel = 0
     bg.Parent = page
     Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+
     local ratio0 = (defaultVal - minVal) / (maxVal - minVal)
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new(ratio0, 0, 1, 0)
-    fill.BackgroundColor3 = THEME.highlight
+    fill.BackgroundColor3 = THEME.accent
     fill.BorderSizePixel = 0
     fill.Parent = bg
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
     local handle = Instance.new("TextButton")
-    handle.Size = UDim2.new(0, 18, 0, 18)
-    handle.Position = UDim2.new(ratio0, -9, 0.5, -9)
+    handle.Size = UDim2.new(0, 14, 0, 14)
+    handle.Position = UDim2.new(ratio0, -7, 0.5, -7)
     handle.BackgroundColor3 = THEME.text
     handle.Text = ""
     handle.BorderSizePixel = 0
     handle.Parent = bg
     Instance.new("UICorner", handle).CornerRadius = UDim.new(1, 0)
+
     local dragging = false
     handle.MouseButton1Down:Connect(function() dragging = true end)
     UserInputService.InputEnded:Connect(function(i)
@@ -357,48 +464,38 @@ local function makeSlider(page, yPos, minVal, maxVal, defaultVal, onChanged)
             local r = math.clamp((i.Position.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
             local val = math.floor(minVal + r * (maxVal - minVal))
             fill.Size = UDim2.new(r, 0, 1, 0)
-            handle.Position = UDim2.new(r, -9, 0.5, -9)
-            onChanged(val, r)
+            handle.Position = UDim2.new(r, -7, 0.5, -7)
+            lbl.Text = label .. ": " .. val
+            onChanged(val)
         end
     end)
-    return bg
-end
-
-local function makeToggleBtn(page, text, yPos, default, onToggle)
-    local btn = makeBtn(page, (default and "[ON]  " or "[OFF] ") .. text, yPos, default)
-    local state = default
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        btn.Text = (state and "[ON]  " or "[OFF] ") .. text
-        btn.BackgroundColor3 = state and THEME.btnActive or THEME.btn
-        onToggle(state)
-    end)
-    return btn
+    return lbl
 end
 
 local function makeColorPicker(page, text, yPos, onChanged)
     makeLabel(page, text, yPos)
     local colors = {
         {Color3.fromRGB(255,50,50),   "Red"},
-        {Color3.fromRGB(50,200,255),  "Cyan"},
+        {Color3.fromRGB(50,150,255),  "Blue"},
         {Color3.fromRGB(50,255,80),   "Green"},
-        {Color3.fromRGB(255,255,50),  "Yellow"},
+        {Color3.fromRGB(255,200,50),  "Yellow"},
         {Color3.fromRGB(255,255,255), "White"},
         {Color3.fromRGB(255,105,180), "Pink"},
-        {Color3.fromRGB(180,100,255), "Purple"},
+        {Color3.fromRGB(160,80,255),  "Purple"},
+        {Color3.fromRGB(50,220,200),  "Teal"},
     }
     local sf = Instance.new("Frame")
-    sf.Size = UDim2.new(1, -24, 0, 28)
-    sf.Position = UDim2.new(0, 12, 0, yPos + 22)
+    sf.Size = UDim2.new(1, -20, 0, 24)
+    sf.Position = UDim2.new(0, 10, 0, yPos + 20)
     sf.BackgroundTransparency = 1
     sf.Parent = page
     local sl = Instance.new("UIListLayout")
     sl.FillDirection = Enum.FillDirection.Horizontal
-    sl.Padding = UDim.new(0, 5)
+    sl.Padding = UDim.new(0, 6)
     sl.Parent = sf
     for _, c in ipairs(colors) do
         local sw = Instance.new("TextButton")
-        sw.Size = UDim2.new(0, 28, 0, 28)
+        sw.Size = UDim2.new(0, 24, 0, 24)
         sw.BackgroundColor3 = c[1]
         sw.Text = ""
         sw.BorderSizePixel = 0
@@ -406,98 +503,131 @@ local function makeColorPicker(page, text, yPos, onChanged)
         Instance.new("UICorner", sw).CornerRadius = UDim.new(1, 0)
         sw.MouseButton1Click:Connect(function()
             onChanged(c[1])
-            sendNotif(text .. ": " .. c[2])
+            sendNotif(text .. ": " .. c[2], c[1])
         end)
     end
 end
 
+local function makeStatusBadge(page, yPos)
+    local badge = Instance.new("Frame")
+    badge.Size = UDim2.new(1, -20, 0, 30)
+    badge.Position = UDim2.new(0, 10, 0, yPos)
+    badge.BackgroundColor3 = THEME.red
+    badge.BorderSizePixel = 0
+    badge.Parent = page
+    Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 6)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = THEME.text
+    lbl.Text = "DISABLED"
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 12
+    lbl.Parent = badge
+    return badge, lbl
+end
+
+local function makeTargetBtns(page, yPos, options, default, onSelect)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, -20, 0, 32)
+    f.Position = UDim2.new(0, 10, 0, yPos)
+    f.BackgroundTransparency = 1
+    f.Parent = page
+    local fl = Instance.new("UIListLayout")
+    fl.FillDirection = Enum.FillDirection.Horizontal
+    fl.Padding = UDim.new(0, 5)
+    fl.Parent = f
+    local btns = {}
+    local btnW = math.floor((360 - 20 - (#options - 1) * 5) / #options)
+    for _, opt in ipairs(options) do
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0, btnW, 1, 0)
+        b.BackgroundColor3 = opt == default and THEME.accent or THEME.card
+        b.TextColor3 = THEME.text
+        b.Text = opt
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 12
+        b.BorderSizePixel = 0
+        b.Parent = f
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        btns[opt] = b
+        b.MouseButton1Click:Connect(function()
+            for o, btn in pairs(btns) do
+                TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quint),
+                    {BackgroundColor3 = o == opt and THEME.accent or THEME.card}):Play()
+            end
+            onSelect(opt)
+        end)
+    end
+    return btns
+end
+
 -- Tabs
-makeTab("Misc",     1)
-makeTab("Fly",      2)
-makeTab("Aimbot",   3)
-makeTab("ESP",      4)
-makeTab("Settings", 5)
+makeTab("Misc",      1)
+makeTab("Fly",       2)
+makeTab("Aimbot",    3)
+makeTab("ESP",       4)
+makeTab("Settings",  5)
+makeTab("Personalize", 6)
 
 -- ══════════════════
 -- MISC TAB
 -- ══════════════════
-local miscPage = makeTabPage("Misc")
-makeSection(miscPage, "Movement", 10)
+local miscPage = makeTabPage("Misc", 500)
 
-local speedLbl = makeLabel(miscPage, "WalkSpeed: 16", 44)
-makeSlider(miscPage, 66, 1, 300, 16, function(val)
+makeSection(miscPage, "MOVEMENT", 14)
+local speedLbl = makeSlider(miscPage, 38, "WalkSpeed", 1, 300, 16, function(val)
     currentSpeed = val
     humanoid.WalkSpeed = val
-    speedLbl.Text = "WalkSpeed: " .. val
 end)
-
-local jumpLbl = makeLabel(miscPage, "JumpPower: 50", 90)
-makeSlider(miscPage, 112, 1, 500, 50, function(val)
+local jumpLbl = makeSlider(miscPage, 90, "JumpPower", 1, 500, 50, function(val)
     humanoid.JumpPower = val
-    jumpLbl.Text = "JumpPower: " .. val
 end)
 
-makeToggleBtn(miscPage, "Infinite Jump", 136, false, function(v)
+makeSection(miscPage, "TOGGLES", 148)
+makeToggle(miscPage, "Infinite Jump", 172, false, function(v)
     infJumpEnabled = v
-    sendNotif(v and "Inf Jump ON" or "Inf Jump OFF")
+    sendNotif(v and "Inf Jump ON" or "Inf Jump OFF", v and THEME.green or THEME.red)
 end)
-
-makeToggleBtn(miscPage, "Noclip", 178, false, function(v)
+makeToggle(miscPage, "Noclip", 218, false, function(v)
     noclipEnabled = v
-    sendNotif(v and "Noclip ON" or "Noclip OFF")
+    sendNotif(v and "Noclip ON" or "Noclip OFF", v and THEME.green or THEME.red)
     if v then
         noclipConnection = RunService.Stepped:Connect(function()
             if noclipEnabled and character then
                 for _, part in ipairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
+                    if part:IsA("BasePart") then part.CanCollide = false end
                 end
             end
         end)
     else
-        if noclipConnection then
-            noclipConnection:Disconnect()
-            noclipConnection = nil
-        end
+        if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
         if character then
             for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
-                end
+                if part:IsA("BasePart") then part.CanCollide = true end
             end
         end
     end
 end)
 
-UserInputService.JumpRequest:Connect(function()
-    if infJumpEnabled and character and humanoid then
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-    end
-end)
-
-makeSection(miscPage, "Other", 226)
-
-local resetBtn = makeBtn(miscPage, "Reset Speed and Jump", 258)
+makeSection(miscPage, "OTHER", 270)
+local resetBtn = makeBtn(miscPage, "Reset Speed and Jump", 294)
 resetBtn.MouseButton1Click:Connect(function()
     humanoid.WalkSpeed = 16
     humanoid.JumpPower = 50
-    speedLbl.Text = "WalkSpeed: 16"
-    jumpLbl.Text = "JumpPower: 50"
     sendNotif("Stats reset")
 end)
 
-local unloadBtn = makeBtn(miscPage, "Unload Script", 302)
-unloadBtn.BackgroundColor3 = THEME.red
+local unloadBtn = makeBtn(miscPage, "Unload Script", 338, THEME.red)
 unloadBtn.MouseButton1Click:Connect(function()
     if flying then
         flying = false
         humanoid.PlatformStand = false
         if flyConnection then flyConnection:Disconnect() end
-        local bp = rootPart:FindFirstChild("FlyBodyPosition")
-        local bg2 = rootPart:FindFirstChild("FlyBodyGyro")
-        if bp then bp:Destroy() end
-        if bg2 then bg2:Destroy() end
+        for _, n in ipairs({"FlyBodyPosition","FlyBodyGyro","FlyVelocity","FlyGyro","FlyAttachment"}) do
+            local o = rootPart:FindFirstChild(n)
+            if o then o:Destroy() end
+        end
     end
     if noclipConnection then noclipConnection:Disconnect() end
     if character then
@@ -513,73 +643,66 @@ unloadBtn.MouseButton1Click:Connect(function()
             if obj and obj.Parent then obj:Destroy() end
         end
     end
-    espObjects = {}
     screenGui:Destroy()
     notifGui:Destroy()
     lockGui:Destroy()
 end)
 
--- ══════════════════
--- FLY TAB
--- ══════════════════
--- ══════════════════
--- FLY TAB
--- ══════════════════
-local flyPage = makeTabPage("Fly")
-makeSection(flyPage, "Fly", 10)
-
-local flyBtn = makeBtn(flyPage, "Fly: OFF", 44)
-local flySpeedVal = 1.2
-local flySpeedLbl = makeLabel(flyPage, "Fly Speed: 1.2", 90)
-makeSlider(flyPage, 112, 1, 30, 3, function(val)
-    flySpeedVal = val / 10
-    flySpeedLbl.Text = "Fly Speed: " .. string.format("%.1f", flySpeedVal)
+UserInputService.JumpRequest:Connect(function()
+    if infJumpEnabled and character and humanoid then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
 end)
 
-local flyVelocity = nil
-local flyGyro = nil
+-- ══════════════════
+-- FLY TAB
+-- ══════════════════
+local flyPage = makeTabPage("Fly", 300)
+makeSection(flyPage, "FLY", 14)
+
+local flyBtn = makeBtn(flyPage, "Fly: OFF", 38)
+makeSlider(flyPage, 88, "Fly Speed", 1, 30, 3, function(val)
+    flySpeedVal = val / 10
+end)
 
 local function stopFly()
     flying = false
     flyBtn.Text = "Fly: OFF"
-    flyBtn.BackgroundColor3 = THEME.btn
+    TweenService:Create(flyBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quint),
+        {BackgroundColor3 = THEME.card}):Play()
     humanoid.PlatformStand = false
     if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-
-    -- Clean up both old and new fly instances
-    for _, name in ipairs({"FlyBodyPosition", "FlyBodyGyro", "FlyVelocity", "FlyGyro", "FlyAttachment"}) do
-        local obj = rootPart:FindFirstChild(name)
-        if obj then obj:Destroy() end
+    for _, n in ipairs({"FlyBodyPosition","FlyBodyGyro","FlyVelocity","FlyGyro","FlyAttachment"}) do
+        local o = rootPart:FindFirstChild(n)
+        if o then o:Destroy() end
     end
     flyVelocity = nil
     flyGyro = nil
-    sendNotif("Fly OFF")
+    sendNotif("Fly OFF", THEME.red)
 end
 
 local function startFly()
     flying = true
     flyBtn.Text = "Fly: ON"
-    flyBtn.BackgroundColor3 = THEME.btnActive
+    TweenService:Create(flyBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quint),
+        {BackgroundColor3 = THEME.accent}):Play()
     humanoid.PlatformStand = true
 
-    -- Try new API first (works in all games)
     local success = pcall(function()
-        local attachment = Instance.new("Attachment")
-        attachment.Name = "FlyAttachment"
-        attachment.Parent = rootPart
-
+        local att = Instance.new("Attachment")
+        att.Name = "FlyAttachment"
+        att.Parent = rootPart
         local lv = Instance.new("LinearVelocity")
         lv.Name = "FlyVelocity"
-        lv.Attachment0 = attachment
+        lv.Attachment0 = att
         lv.MaxForce = math.huge
         lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
         lv.VectorVelocity = Vector3.zero
         lv.Parent = rootPart
         flyVelocity = lv
-
         local ao = Instance.new("AlignOrientation")
         ao.Name = "FlyGyro"
-        ao.Attachment0 = attachment
+        ao.Attachment0 = att
         ao.MaxTorque = math.huge
         ao.MaxAngularVelocity = math.huge
         ao.Responsiveness = 200
@@ -588,18 +711,16 @@ local function startFly()
         flyGyro = ao
     end)
 
-    -- Fallback to old API if new one fails
     if not success or not flyVelocity then
         pcall(function()
             local bp = Instance.new("BodyPosition")
             bp.Name = "FlyBodyPosition"
-            bp.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+            bp.MaxForce = Vector3.new(1e5,1e5,1e5)
             bp.Position = rootPart.Position
             bp.Parent = rootPart
-
             local bg = Instance.new("BodyGyro")
             bg.Name = "FlyBodyGyro"
-            bg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+            bg.MaxTorque = Vector3.new(1e5,1e5,1e5)
             bg.CFrame = rootPart.CFrame
             bg.Parent = rootPart
         end)
@@ -615,214 +736,83 @@ local function startFly()
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.new(0,1,0) end
-
         local speed = flySpeedVal * 60
-
         if flyVelocity then
-            -- New API
             flyVelocity.VectorVelocity = dir * speed
-            if flyGyro then
-                flyGyro.CFrame = cam.CFrame
-            end
+            if flyGyro then flyGyro.CFrame = cam.CFrame end
         else
-            -- Old API fallback
             local bp = rootPart:FindFirstChild("FlyBodyPosition")
             local bg = rootPart:FindFirstChild("FlyBodyGyro")
             if bp then bp.Position += dir * flySpeedVal end
             if bg then bg.CFrame = cam.CFrame end
         end
     end)
-    sendNotif("Fly ON")
+    sendNotif("Fly ON", THEME.green)
 end
 
 flyBtn.MouseButton1Click:Connect(function()
     if flying then stopFly() else startFly() end
 end)
+
 -- ══════════════════
 -- AIMBOT TAB
 -- ══════════════════
-local aimPage = makeTabPage("Aimbot")
-makeSection(aimPage, "Aimbot", 10)
+local aimPage = makeTabPage("Aimbot", 620)
+makeSection(aimPage, "AIMBOT", 14)
 
-local aimStatusLbl = Instance.new("TextLabel")
-aimStatusLbl.Size = UDim2.new(1, -24, 0, 30)
-aimStatusLbl.Position = UDim2.new(0, 12, 0, 44)
-aimStatusLbl.BackgroundColor3 = THEME.red
-aimStatusLbl.TextColor3 = THEME.text
-aimStatusLbl.Text = "DISABLED"
-aimStatusLbl.Font = Enum.Font.GothamBold
-aimStatusLbl.TextSize = 13
-aimStatusLbl.BorderSizePixel = 0
-aimStatusLbl.Parent = aimPage
-Instance.new("UICorner", aimStatusLbl).CornerRadius = UDim.new(0, 7)
-
-local aimBtn = makeBtn(aimPage, "Enable Aimbot", 82)
+local aimBadge, aimBadgeLbl = makeStatusBadge(aimPage, 38)
+local aimBtn = makeBtn(aimPage, "Enable Aimbot", 78)
 aimBtn.MouseButton1Click:Connect(function()
     aimbotEnabled = not aimbotEnabled
     aimBtn.Text = aimbotEnabled and "Disable Aimbot" or "Enable Aimbot"
-    aimBtn.BackgroundColor3 = aimbotEnabled and THEME.btnActive or THEME.btn
-    aimStatusLbl.Text = aimbotEnabled and "ENABLED" or "DISABLED"
-    aimStatusLbl.BackgroundColor3 = aimbotEnabled and THEME.green or THEME.red
+    TweenService:Create(aimBadge, TweenInfo.new(0.2, Enum.EasingStyle.Quint),
+        {BackgroundColor3 = aimbotEnabled and THEME.green or THEME.red}):Play()
+    aimBadgeLbl.Text = aimbotEnabled and "ENABLED" or "DISABLED"
+    TweenService:Create(aimBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quint),
+        {BackgroundColor3 = aimbotEnabled and THEME.accent or THEME.card}):Play()
     if not aimbotEnabled then hideLockIndicator() end
     sendNotif(aimbotEnabled and "Aimbot ON" or "Aimbot OFF", aimbotEnabled and THEME.green or THEME.red)
 end)
 
-makeSection(aimPage, "Settings", 128)
-
-local fovLbl = makeLabel(aimPage, "FOV: 150", 162)
-makeSlider(aimPage, 184, 10, 600, 150, function(val)
-    aimbotFOV = val
-    fovLbl.Text = "FOV: " .. val
-end)
-
-local smoothLbl = makeLabel(aimPage, "Smoothing: instant", 208)
-makeSlider(aimPage, 230, 1, 10, 10, function(val)
+makeSection(aimPage, "SETTINGS", 128)
+makeSlider(aimPage, 150, "FOV", 10, 600, 150, function(val) aimbotFOV = val end)
+makeSlider(aimPage, 202, "Smoothing", 1, 10, 10, function(val)
     aimbotSmoothing = val / 10
-    smoothLbl.Text = aimbotSmoothing >= 1 and "Smoothing: instant" or "Smoothing: " .. string.format("%.1f", aimbotSmoothing)
 end)
 
-makeSection(aimPage, "Lock Target", 258)
-
-local targetFrame = Instance.new("Frame")
-targetFrame.Size = UDim2.new(1, -24, 0, 34)
-targetFrame.Position = UDim2.new(0, 12, 0, 292)
-targetFrame.BackgroundTransparency = 1
-targetFrame.Parent = aimPage
-local tfl = Instance.new("UIListLayout")
-tfl.FillDirection = Enum.FillDirection.Horizontal
-tfl.Padding = UDim.new(0, 6)
-tfl.Parent = targetFrame
-
-local targetBtns = {}
-for _, part in ipairs({"Head", "Torso", "Root"}) do
-    local realPart = part == "Root" and "HumanoidRootPart" or part
-    local tb = Instance.new("TextButton")
-    tb.Size = UDim2.new(0, 118, 1, 0)
-    tb.BackgroundColor3 = realPart == aimbotTarget and THEME.btnActive or THEME.btn
-    tb.TextColor3 = THEME.text
-    tb.Text = part
-    tb.Font = Enum.Font.GothamBold
-    tb.TextSize = 12
-    tb.BorderSizePixel = 0
-    tb.Parent = targetFrame
-    Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 7)
-    targetBtns[realPart] = tb
-    tb.MouseButton1Click:Connect(function()
-        aimbotTarget = realPart
-        for p, b in pairs(targetBtns) do
-            b.BackgroundColor3 = p == realPart and THEME.btnActive or THEME.btn
-        end
-        sendNotif("Target: " .. part)
-    end)
-end
-
-makeSection(aimPage, "Lock Indicator", 340)
-
-local indFrame = Instance.new("Frame")
-indFrame.Size = UDim2.new(1, -24, 0, 34)
-indFrame.Position = UDim2.new(0, 12, 0, 374)
-indFrame.BackgroundTransparency = 1
-indFrame.Parent = aimPage
-local ifl = Instance.new("UIListLayout")
-ifl.FillDirection = Enum.FillDirection.Horizontal
-ifl.Padding = UDim.new(0, 6)
-ifl.Parent = indFrame
-
-local circleBtn = Instance.new("TextButton")
-circleBtn.Size = UDim2.new(0, 195, 1, 0)
-circleBtn.BackgroundColor3 = THEME.btnActive
-circleBtn.TextColor3 = THEME.text
-circleBtn.Text = "Circle"
-circleBtn.Font = Enum.Font.GothamBold
-circleBtn.TextSize = 13
-circleBtn.BorderSizePixel = 0
-circleBtn.Parent = indFrame
-Instance.new("UICorner", circleBtn).CornerRadius = UDim.new(0, 7)
-
-local crossBtn = Instance.new("TextButton")
-crossBtn.Size = UDim2.new(0, 195, 1, 0)
-crossBtn.BackgroundColor3 = THEME.btn
-crossBtn.TextColor3 = THEME.text
-crossBtn.Text = "Cross"
-crossBtn.Font = Enum.Font.GothamBold
-crossBtn.TextSize = 13
-crossBtn.BorderSizePixel = 0
-crossBtn.Parent = indFrame
-Instance.new("UICorner", crossBtn).CornerRadius = UDim.new(0, 7)
-
-circleBtn.MouseButton1Click:Connect(function()
-    lockIndicatorType = "Circle"
-    circleBtn.BackgroundColor3 = THEME.btnActive
-    crossBtn.BackgroundColor3 = THEME.btn
-    sendNotif("Indicator: Circle")
-end)
-crossBtn.MouseButton1Click:Connect(function()
-    lockIndicatorType = "Cross"
-    crossBtn.BackgroundColor3 = THEME.btnActive
-    circleBtn.BackgroundColor3 = THEME.btn
-    sendNotif("Indicator: Cross")
+makeSection(aimPage, "LOCK TARGET", 258)
+makeTargetBtns(aimPage, 282, {"Head", "Torso", "Root"}, "Head", function(opt)
+    aimbotTarget = opt == "Root" and "HumanoidRootPart" or opt
+    sendNotif("Target: " .. opt)
 end)
 
-makeSection(aimPage, "Activation Mode", 422)
-
-local modeFrame = Instance.new("Frame")
-modeFrame.Size = UDim2.new(1, -24, 0, 34)
-modeFrame.Position = UDim2.new(0, 12, 0, 456)
-modeFrame.BackgroundTransparency = 1
-modeFrame.Parent = aimPage
-local mfl = Instance.new("UIListLayout")
-mfl.FillDirection = Enum.FillDirection.Horizontal
-mfl.Padding = UDim.new(0, 6)
-mfl.Parent = modeFrame
-
-local holdBtn = Instance.new("TextButton")
-holdBtn.Size = UDim2.new(0, 195, 1, 0)
-holdBtn.BackgroundColor3 = THEME.btnActive
-holdBtn.TextColor3 = THEME.text
-holdBtn.Text = "Hold"
-holdBtn.Font = Enum.Font.GothamBold
-holdBtn.TextSize = 13
-holdBtn.BorderSizePixel = 0
-holdBtn.Parent = modeFrame
-Instance.new("UICorner", holdBtn).CornerRadius = UDim.new(0, 7)
-
-local togBtn2 = Instance.new("TextButton")
-togBtn2.Size = UDim2.new(0, 195, 1, 0)
-togBtn2.BackgroundColor3 = THEME.btn
-togBtn2.TextColor3 = THEME.text
-togBtn2.Text = "Toggle"
-togBtn2.Font = Enum.Font.GothamBold
-togBtn2.TextSize = 13
-togBtn2.BorderSizePixel = 0
-togBtn2.Parent = modeFrame
-Instance.new("UICorner", togBtn2).CornerRadius = UDim.new(0, 7)
-
-holdBtn.MouseButton1Click:Connect(function()
-    aimbotHoldMode = true
-    holdBtn.BackgroundColor3 = THEME.btnActive
-    togBtn2.BackgroundColor3 = THEME.btn
-    sendNotif("Mode: Hold")
-end)
-togBtn2.MouseButton1Click:Connect(function()
-    aimbotHoldMode = false
-    togBtn2.BackgroundColor3 = THEME.btnActive
-    holdBtn.BackgroundColor3 = THEME.btn
-    sendNotif("Mode: Toggle")
+makeSection(aimPage, "INDICATOR", 328)
+makeTargetBtns(aimPage, 352, {"Circle", "Cross"}, "Circle", function(opt)
+    lockIndicatorType = opt
+    sendNotif("Indicator: " .. opt)
 end)
 
-makeSection(aimPage, "Keybind", 504)
-local keyBindBtn = makeBtn(aimPage, "Keybind: Q  (click to change)", 538)
+makeSection(aimPage, "MODE", 398)
+makeTargetBtns(aimPage, 422, {"Hold", "Toggle"}, "Hold", function(opt)
+    aimbotHoldMode = opt == "Hold"
+    sendNotif("Mode: " .. opt)
+end)
+
+makeSection(aimPage, "KEYBIND", 468)
+local keyBindBtn = makeBtn(aimPage, "Keybind: Q  —  click to change", 492)
 keyBindBtn.MouseButton1Click:Connect(function()
     if listeningForKey then return end
     listeningForKey = true
     keyBindBtn.Text = "Press any key..."
-    keyBindBtn.BackgroundColor3 = THEME.red
+    TweenService:Create(keyBindBtn, TweenInfo.new(0.15),
+        {BackgroundColor3 = THEME.red}):Play()
     local conn
     conn = UserInputService.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Keyboard then
             aimbotKey = input.KeyCode
-            keyBindBtn.Text = "Keybind: " .. input.KeyCode.Name .. "  (click to change)"
-            keyBindBtn.BackgroundColor3 = THEME.btn
+            keyBindBtn.Text = "Keybind: " .. input.KeyCode.Name .. "  —  click to change"
+            TweenService:Create(keyBindBtn, TweenInfo.new(0.15),
+                {BackgroundColor3 = THEME.card}):Play()
             listeningForKey = false
             sendNotif("Keybind: " .. input.KeyCode.Name)
             conn:Disconnect()
@@ -831,52 +821,37 @@ keyBindBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Aimbot loop
-local function getClosestPlayer()
+RunService.Heartbeat:Connect(function()
+    if not aimbotEnabled then
+        if currentLockedTarget then currentLockedTarget = nil hideLockIndicator() end
+        return
+    end
+    local active = aimbotHoldMode and UserInputService:IsKeyDown(aimbotKey)
+        or (not aimbotHoldMode and aimbotToggled)
+    if not active then
+        if currentLockedTarget then currentLockedTarget = nil hideLockIndicator() end
+        return
+    end
     local closest, closestDist = nil, aimbotFOV
-    local cx, cy = Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2
+    local cx, cy = Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= player and p.Character then
             local part = p.Character:FindFirstChild(aimbotTarget)
             if part then
                 local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
                 if onScreen then
-                    local d = math.sqrt((sp.X-cx)^2 + (sp.Y-cy)^2)
-                    if d < closestDist then closestDist = d; closest = part end
+                    local d = math.sqrt((sp.X-cx)^2+(sp.Y-cy)^2)
+                    if d < closestDist then closestDist = d closest = part end
                 end
             end
         end
     end
-    return closest
-end
-
-RunService.Heartbeat:Connect(function()
-    if not aimbotEnabled then
-        if currentLockedTarget then
-            currentLockedTarget = nil
-            hideLockIndicator()
-        end
-        return
-    end
-    local active = aimbotHoldMode and UserInputService:IsKeyDown(aimbotKey)
-        or (not aimbotHoldMode and aimbotToggled)
-    if not active then
-        if currentLockedTarget then
-            currentLockedTarget = nil
-            hideLockIndicator()
-        end
-        return
-    end
-    local target = getClosestPlayer()
-    if target then
-        currentLockedTarget = target
-        local targetCF = CFrame.new(Camera.CFrame.Position, target.Position)
+    if closest then
+        currentLockedTarget = closest
+        local targetCF = CFrame.new(Camera.CFrame.Position, closest.Position)
         Camera.CFrame = Camera.CFrame:Lerp(targetCF, math.clamp(aimbotSmoothing, 0.1, 1))
-        local sp, onScreen = Camera:WorldToViewportPoint(target.Position)
-        if onScreen then
-            showLockIndicator(sp.X, sp.Y)
-        else
-            hideLockIndicator()
-        end
+        local sp, onScreen = Camera:WorldToViewportPoint(closest.Position)
+        if onScreen then showLockIndicator(sp.X, sp.Y) else hideLockIndicator() end
     else
         currentLockedTarget = nil
         hideLockIndicator()
@@ -899,28 +874,19 @@ end)
 -- ══════════════════
 -- ESP TAB
 -- ══════════════════
-local espPage = makeTabPage("ESP")
-makeSection(espPage, "ESP", 10)
+local espPage = makeTabPage("ESP", 560)
+makeSection(espPage, "ESP", 14)
 
-local espStatusLbl = Instance.new("TextLabel")
-espStatusLbl.Size = UDim2.new(1, -24, 0, 30)
-espStatusLbl.Position = UDim2.new(0, 12, 0, 44)
-espStatusLbl.BackgroundColor3 = THEME.red
-espStatusLbl.TextColor3 = THEME.text
-espStatusLbl.Text = "DISABLED"
-espStatusLbl.Font = Enum.Font.GothamBold
-espStatusLbl.TextSize = 13
-espStatusLbl.BorderSizePixel = 0
-espStatusLbl.Parent = espPage
-Instance.new("UICorner", espStatusLbl).CornerRadius = UDim.new(0, 7)
-
-local espBtn = makeBtn(espPage, "Enable ESP", 82)
+local espBadge, espBadgeLbl = makeStatusBadge(espPage, 38)
+local espBtn = makeBtn(espPage, "Enable ESP", 78)
 espBtn.MouseButton1Click:Connect(function()
     espEnabled = not espEnabled
     espBtn.Text = espEnabled and "Disable ESP" or "Enable ESP"
-    espBtn.BackgroundColor3 = espEnabled and THEME.btnActive or THEME.btn
-    espStatusLbl.Text = espEnabled and "ENABLED" or "DISABLED"
-    espStatusLbl.BackgroundColor3 = espEnabled and THEME.green or THEME.red
+    TweenService:Create(espBadge, TweenInfo.new(0.2, Enum.EasingStyle.Quint),
+        {BackgroundColor3 = espEnabled and THEME.green or THEME.red}):Play()
+    espBadgeLbl.Text = espEnabled and "ENABLED" or "DISABLED"
+    TweenService:Create(espBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quint),
+        {BackgroundColor3 = espEnabled and THEME.accent or THEME.card}):Play()
     sendNotif(espEnabled and "ESP ON" or "ESP OFF", espEnabled and THEME.green or THEME.red)
     if not espEnabled then
         for _, objs in pairs(espObjects) do
@@ -932,30 +898,24 @@ espBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-makeSection(espPage, "Toggles", 128)
-makeToggleBtn(espPage, "Boxes",    162, true,  function(v) espBoxes = v end)
-makeToggleBtn(espPage, "Names",    204, true,  function(v) espNames = v end)
-makeToggleBtn(espPage, "Distance", 246, true,  function(v) espDistance = v end)
-makeToggleBtn(espPage, "Tracers",  288, false, function(v) espTracers = v end)
+makeSection(espPage, "TOGGLES", 124)
+makeToggle(espPage, "Boxes",    148, true,  function(v) espBoxes = v end)
+makeToggle(espPage, "Names",    194, true,  function(v) espNames = v end)
+makeToggle(espPage, "Distance", 240, true,  function(v) espDistance = v end)
+makeToggle(espPage, "Tracers",  286, false, function(v) espTracers = v end)
 
-makeSection(espPage, "Colors", 340)
-makeColorPicker(espPage, "Box Color", 374, function(c)
+makeSection(espPage, "COLORS", 340)
+makeColorPicker(espPage, "Box Color",    364, function(c)
     espBoxColor = c
-    for _, objs in pairs(espObjects) do
-        if objs.box then objs.box.BorderColor3 = c end
-    end
+    for _, o in pairs(espObjects) do if o.box then o.box.BorderColor3 = c end end
 end)
-makeColorPicker(espPage, "Name Color", 422, function(c)
+makeColorPicker(espPage, "Name Color",   410, function(c)
     espNameColor = c
-    for _, objs in pairs(espObjects) do
-        if objs.nameTag then objs.nameTag.TextColor3 = c end
-    end
+    for _, o in pairs(espObjects) do if o.nameTag then o.nameTag.TextColor3 = c end end
 end)
-makeColorPicker(espPage, "Tracer Color", 470, function(c)
+makeColorPicker(espPage, "Tracer Color", 456, function(c)
     espTracerColor = c
-    for _, objs in pairs(espObjects) do
-        if objs.tracer then objs.tracer.BackgroundColor3 = c end
-    end
+    for _, o in pairs(espObjects) do if o.tracer then o.tracer.BackgroundColor3 = c end end
 end)
 
 local espGui = Instance.new("ScreenGui")
@@ -963,7 +923,7 @@ espGui.Name = "ESPGui"
 espGui.ResetOnSpawn = false
 espGui.Parent = player.PlayerGui
 
-local function cleanupESPForPlayer(p)
+local function cleanupESP(p)
     if espObjects[p] then
         for _, obj in pairs(espObjects[p]) do
             if obj and obj.Parent then obj:Destroy() end
@@ -972,7 +932,7 @@ local function cleanupESPForPlayer(p)
     end
 end
 
-local function getESPObjects(p)
+local function getESPObjs(p)
     if not espObjects[p] then
         espObjects[p] = {}
         local box = Instance.new("Frame")
@@ -986,7 +946,7 @@ local function getESPObjects(p)
         nameTag.BackgroundTransparency = 1
         nameTag.TextColor3 = espNameColor
         nameTag.Font = Enum.Font.GothamBold
-        nameTag.TextSize = 12
+        nameTag.TextSize = 11
         nameTag.BorderSizePixel = 0
         nameTag.Visible = false
         nameTag.Parent = espGui
@@ -1001,53 +961,48 @@ local function getESPObjects(p)
     return espObjects[p]
 end
 
-Players.PlayerRemoving:Connect(cleanupESPForPlayer)
+Players.PlayerRemoving:Connect(cleanupESP)
 
 RunService.RenderStepped:Connect(function()
-    local allPlayers = {}
-    for _, p in ipairs(Players:GetPlayers()) do allPlayers[p] = true end
-    for p in pairs(espObjects) do
-        if not allPlayers[p] then cleanupESPForPlayer(p) end
-    end
+    local all = {}
+    for _, p in ipairs(Players:GetPlayers()) do all[p] = true end
+    for p in pairs(espObjects) do if not all[p] then cleanupESP(p) end end
     if not espEnabled then return end
     for _, p in ipairs(Players:GetPlayers()) do
         if p == player then continue end
-        if not p.Character then cleanupESPForPlayer(p) continue end
+        if not p.Character then cleanupESP(p) continue end
         local hrp  = p.Character:FindFirstChild("HumanoidRootPart")
         local head = p.Character:FindFirstChild("Head")
-        if not hrp or not head then cleanupESPForPlayer(p) continue end
-        local objs = getESPObjects(p)
-        local screenPos, onScreen   = Camera:WorldToViewportPoint(hrp.Position)
-        local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.7, 0))
-        if not onScreen or not headOnScreen then
+        if not hrp or not head then cleanupESP(p) continue end
+        local objs = getESPObjs(p)
+        local sp, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+        local hp, hOnScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0,0.7,0))
+        if not onScreen or not hOnScreen then
             objs.box.Visible = false
             objs.nameTag.Visible = false
             objs.tracer.Visible = false
             continue
         end
-        local height = math.abs(screenPos.Y - headPos.Y) * 2.2
-        local width  = height * 0.55
-        local dist   = math.floor((rootPart.Position - hrp.Position).Magnitude)
-        objs.box.Visible      = espBoxes
+        local h = math.abs(sp.Y - hp.Y) * 2.2
+        local w = h * 0.55
+        local dist = math.floor((rootPart.Position - hrp.Position).Magnitude)
+        objs.box.Visible = espBoxes
         objs.box.BorderColor3 = espBoxColor
-        objs.box.Size         = UDim2.new(0, width, 0, height)
-        objs.box.Position     = UDim2.new(0, headPos.X - width/2, 0, headPos.Y)
-        objs.nameTag.Visible    = espNames or espDistance
+        objs.box.Size = UDim2.new(0, w, 0, h)
+        objs.box.Position = UDim2.new(0, hp.X - w/2, 0, hp.Y)
+        objs.nameTag.Visible = espNames or espDistance
         objs.nameTag.TextColor3 = espNameColor
         local txt = espNames and p.Name or ""
         if espDistance then txt = txt .. (espNames and " [" or "[") .. dist .. "m]" end
-        objs.nameTag.Text     = txt
-        objs.nameTag.Size     = UDim2.new(0, 200, 0, 18)
-        objs.nameTag.Position = UDim2.new(0, headPos.X - 100, 0, headPos.Y - 22)
-        objs.tracer.Visible          = espTracers
+        objs.nameTag.Text = txt
+        objs.nameTag.Size = UDim2.new(0, 200, 0, 16)
+        objs.nameTag.Position = UDim2.new(0, hp.X - 100, 0, hp.Y - 20)
+        objs.tracer.Visible = espTracers
         objs.tracer.BackgroundColor3 = espTracerColor
-        local botX = Camera.ViewportSize.X / 2
-        local botY = Camera.ViewportSize.Y
-        local dx   = screenPos.X - botX
-        local dy   = screenPos.Y - botY
-        local len  = math.sqrt(dx*dx + dy*dy)
-        objs.tracer.Size     = UDim2.new(0, 2, 0, len)
-        objs.tracer.Position = UDim2.new(0, botX, 0, botY)
+        local bx, by = Camera.ViewportSize.X/2, Camera.ViewportSize.Y
+        local dx, dy = sp.X - bx, sp.Y - by
+        objs.tracer.Size = UDim2.new(0, 2, 0, math.sqrt(dx*dx+dy*dy))
+        objs.tracer.Position = UDim2.new(0, bx, 0, by)
         objs.tracer.Rotation = math.deg(math.atan2(dy, dx)) + 90
     end
 end)
@@ -1055,24 +1010,24 @@ end)
 -- ══════════════════
 -- SETTINGS TAB
 -- ══════════════════
-local settingsPage = makeTabPage("Settings")
-settingsPage.CanvasSize = UDim2.new(0, 0, 0, 800)
-makeSection(settingsPage, "GUI Toggle Key", 10)
+local settingsPage = makeTabPage("Settings", 700)
+settingsPage.CanvasSize = UDim2.new(0, 0, 0, 700)
 
-local guiKeyLbl = makeLabel(settingsPage, "Current key: Y", 44)
-local guiKeyBtn = makeBtn(settingsPage, "Change Key (click then press key)", 66)
+makeSection(settingsPage, "GUI TOGGLE KEY", 14)
+local guiKeyLbl = makeLabel(settingsPage, "Current key: Y", 38)
+local guiKeyBtn = makeBtn(settingsPage, "Click to change key", 58)
 guiKeyBtn.MouseButton1Click:Connect(function()
     if listeningForGuiKey then return end
     listeningForGuiKey = true
     guiKeyBtn.Text = "Press any key..."
-    guiKeyBtn.BackgroundColor3 = THEME.red
+    TweenService:Create(guiKeyBtn, TweenInfo.new(0.15), {BackgroundColor3 = THEME.red}):Play()
     local conn
     conn = UserInputService.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Keyboard then
             guiToggleKey = input.KeyCode
             guiKeyLbl.Text = "Current key: " .. input.KeyCode.Name
-            guiKeyBtn.Text = "Change Key (click then press key)"
-            guiKeyBtn.BackgroundColor3 = THEME.btn
+            guiKeyBtn.Text = "Click to change key"
+            TweenService:Create(guiKeyBtn, TweenInfo.new(0.15), {BackgroundColor3 = THEME.card}):Play()
             listeningForGuiKey = false
             sendNotif("GUI key: " .. input.KeyCode.Name)
             conn:Disconnect()
@@ -1080,235 +1035,167 @@ guiKeyBtn.MouseButton1Click:Connect(function()
     end)
 end)
 
-makeSection(settingsPage, "Open / Close Animation", 116)
-local animStyles = {"Back", "Bounce", "Elastic", "Quad", "Sine"}
-local currentOpenStyle = "Back"
-local currentCloseStyle = "Quad"
+makeSection(settingsPage, "OPEN ANIMATION", 108)
+makeTargetBtns(settingsPage, 132, {"Back","Bounce","Elastic","Quad","Sine"}, "Quad", function(opt)
+    currentOpenStyle = opt
+    sendNotif("Open: " .. opt)
+end)
 
-makeLabel(settingsPage, "Open style:", 150)
-local openStyleFrame = Instance.new("Frame")
-openStyleFrame.Size = UDim2.new(1, -24, 0, 34)
-openStyleFrame.Position = UDim2.new(0, 12, 0, 172)
-openStyleFrame.BackgroundTransparency = 1
-openStyleFrame.Parent = settingsPage
-local ofl = Instance.new("UIListLayout")
-ofl.FillDirection = Enum.FillDirection.Horizontal
-ofl.Padding = UDim.new(0, 5)
-ofl.Parent = openStyleFrame
+makeSection(settingsPage, "CLOSE ANIMATION", 178)
+makeTargetBtns(settingsPage, 202, {"Back","Bounce","Elastic","Quad","Sine"}, "Quad", function(opt)
+    currentCloseStyle = opt
+    sendNotif("Close: " .. opt)
+end)
 
-local openStyleBtns = {}
-for _, style in ipairs(animStyles) do
-    local sb = Instance.new("TextButton")
-    sb.Size = UDim2.new(0, 72, 1, 0)
-    sb.BackgroundColor3 = style == currentOpenStyle and THEME.btnActive or THEME.btn
-    sb.TextColor3 = THEME.text
-    sb.Text = style
-    sb.Font = Enum.Font.GothamBold
-    sb.TextSize = 11
-    sb.BorderSizePixel = 0
-    sb.Parent = openStyleFrame
-    Instance.new("UICorner", sb).CornerRadius = UDim.new(0, 6)
-    openStyleBtns[style] = sb
-    sb.MouseButton1Click:Connect(function()
-        currentOpenStyle = style
-        for s, b in pairs(openStyleBtns) do
-            b.BackgroundColor3 = s == style and THEME.btnActive or THEME.btn
-        end
-        sendNotif("Open style: " .. style)
-    end)
-end
-
-makeLabel(settingsPage, "Close style:", 216)
-local closeStyleFrame = Instance.new("Frame")
-closeStyleFrame.Size = UDim2.new(1, -24, 0, 34)
-closeStyleFrame.Position = UDim2.new(0, 12, 0, 238)
-closeStyleFrame.BackgroundTransparency = 1
-closeStyleFrame.Parent = settingsPage
-local cfl = Instance.new("UIListLayout")
-cfl.FillDirection = Enum.FillDirection.Horizontal
-cfl.Padding = UDim.new(0, 5)
-cfl.Parent = closeStyleFrame
-
-local closeStyleBtns = {}
-for _, style in ipairs(animStyles) do
-    local sb = Instance.new("TextButton")
-    sb.Size = UDim2.new(0, 72, 1, 0)
-    sb.BackgroundColor3 = style == currentCloseStyle and THEME.btnActive or THEME.btn
-    sb.TextColor3 = THEME.text
-    sb.Text = style
-    sb.Font = Enum.Font.GothamBold
-    sb.TextSize = 11
-    sb.BorderSizePixel = 0
-    sb.Parent = closeStyleFrame
-    Instance.new("UICorner", sb).CornerRadius = UDim.new(0, 6)
-    closeStyleBtns[style] = sb
-    sb.MouseButton1Click:Connect(function()
-        currentCloseStyle = style
-        for s, b in pairs(closeStyleBtns) do
-            b.BackgroundColor3 = s == style and THEME.btnActive or THEME.btn
-        end
-        sendNotif("Close style: " .. style)
-    end)
-end
-
-makeSection(settingsPage, "Speed", 286)
-local openSpeedVal = 0.35
-local closeSpeedVal = 0.25
-
-local openSpeedLbl = makeLabel(settingsPage, "Open speed: 0.35s", 320)
-makeSlider(settingsPage, 342, 1, 20, 4, function(val)
+makeSection(settingsPage, "SPEED", 248)
+makeSlider(settingsPage, 272, "Open speed (x10)", 1, 20, 3, function(val)
     openSpeedVal = val / 10
-    openSpeedLbl.Text = "Open speed: " .. string.format("%.2f", openSpeedVal) .. "s"
 end)
-
-local closeSpeedLbl = makeLabel(settingsPage, "Close speed: 0.25s", 366)
-makeSlider(settingsPage, 388, 1, 20, 3, function(val)
+makeSlider(settingsPage, 324, "Close speed (x10)", 1, 20, 2, function(val)
     closeSpeedVal = val / 10
-    closeSpeedLbl.Text = "Close speed: " .. string.format("%.2f", closeSpeedVal) .. "s"
 end)
--- Save/Load settings
-makeSection(settingsPage, "Save Settings", 420)
 
-local saveBtn = makeBtn(settingsPage, "Save Current Settings", 454)
-local loadBtn = makeBtn(settingsPage, "Load Saved Settings", 498)
-local saveStatusLbl = makeLabel(settingsPage, "No saved settings found", 542)
-
-local function getSettings()
-    return {
-        walkSpeed = currentSpeed,
-        flySpeed = flySpeedVal,
-        aimbotFOV = aimbotFOV,
-        aimbotSmoothing = aimbotSmoothing,
-        aimbotTarget = aimbotTarget,
-        aimbotHoldMode = aimbotHoldMode,
-        aimbotKey = aimbotKey.Name,
-        lockIndicator = lockIndicatorType,
-        guiKey = guiToggleKey.Name,
-        openStyle = currentOpenStyle,
-        closeStyle = currentCloseStyle,
-    }
-end
+makeSection(settingsPage, "SAVE / LOAD", 378)
+local saveStatusLbl = makeLabel(settingsPage, "No save found", 402)
+local saveBtn = makeBtn(settingsPage, "Save Settings", 422)
+local loadBtn = makeBtn(settingsPage, "Load Settings", 466)
 
 local function saveSettings()
-    local ok, err = pcall(function()
-        local data = getSettings()
-        local json = game:GetService("HttpService"):JSONEncode(data)
-        writefile("IkesScript_settings.json", json)
+    local ok = pcall(function()
+        local data = {
+            walkSpeed = currentSpeed,
+            flySpeed = flySpeedVal,
+            aimbotFOV = aimbotFOV,
+            aimbotSmoothing = aimbotSmoothing,
+            aimbotTarget = aimbotTarget,
+            aimbotHoldMode = aimbotHoldMode,
+            aimbotKey = aimbotKey.Name,
+            lockIndicator = lockIndicatorType,
+            guiKey = guiToggleKey.Name,
+            openStyle = currentOpenStyle,
+            closeStyle = currentCloseStyle,
+        }
+        writefile("IkesScript_settings.json", HttpService:JSONEncode(data))
     end)
-    if ok then
-        saveStatusLbl.Text = "Settings saved!"
-        sendNotif("Settings saved", THEME.green)
-    else
-        saveStatusLbl.Text = "Save failed (executor may not support it)"
-        sendNotif("Save failed", THEME.red)
-    end
+    saveStatusLbl.Text = ok and "Saved!" or "Save failed"
+    sendNotif(ok and "Settings saved" or "Save failed", ok and THEME.green or THEME.red)
 end
 
 local function loadSettings()
-    local ok, err = pcall(function()
-        local json = readfile("IkesScript_settings.json")
-        local data = game:GetService("HttpService"):JSONDecode(json)
-
-        if data.walkSpeed then
-            currentSpeed = data.walkSpeed
-            humanoid.WalkSpeed = currentSpeed
-            speedLbl.Text = "WalkSpeed: " .. currentSpeed
-        end
+    local ok = pcall(function()
+        local data = HttpService:JSONDecode(readfile("IkesScript_settings.json"))
+        if data.walkSpeed then currentSpeed = data.walkSpeed humanoid.WalkSpeed = currentSpeed end
         if data.flySpeed then flySpeedVal = data.flySpeed end
         if data.aimbotFOV then aimbotFOV = data.aimbotFOV end
         if data.aimbotSmoothing then aimbotSmoothing = data.aimbotSmoothing end
         if data.aimbotTarget then aimbotTarget = data.aimbotTarget end
         if data.aimbotHoldMode ~= nil then aimbotHoldMode = data.aimbotHoldMode end
-        if data.aimbotKey then
-            local ok2, key = pcall(function() return Enum.KeyCode[data.aimbotKey] end)
-            if ok2 then aimbotKey = key end
-        end
+        if data.aimbotKey then pcall(function() aimbotKey = Enum.KeyCode[data.aimbotKey] end) end
         if data.lockIndicator then lockIndicatorType = data.lockIndicator end
         if data.guiKey then
-            local ok2, key = pcall(function() return Enum.KeyCode[data.guiKey] end)
-            if ok2 then
-                guiToggleKey = key
+            pcall(function()
+                guiToggleKey = Enum.KeyCode[data.guiKey]
                 guiKeyLbl.Text = "Current key: " .. data.guiKey
-            end
+            end)
         end
         if data.openStyle then currentOpenStyle = data.openStyle end
         if data.closeStyle then currentCloseStyle = data.closeStyle end
     end)
-    if ok then
-        saveStatusLbl.Text = "Settings loaded!"
-        sendNotif("Settings loaded", THEME.green)
-    else
-        saveStatusLbl.Text = "No save file found"
-        sendNotif("No save found", THEME.red)
-    end
+    saveStatusLbl.Text = ok and "Loaded!" or "No save found"
+    sendNotif(ok and "Settings loaded" or "No save found", ok and THEME.green or THEME.red)
 end
 
 saveBtn.MouseButton1Click:Connect(saveSettings)
 loadBtn.MouseButton1Click:Connect(loadSettings)
 
--- Theme customization
-makeSection(settingsPage, "GUI Customization", 566)
-
-makeColorPicker(settingsPage, "Accent Color", 600, function(c)
-    THEME.btnActive = c
-    THEME.tabActive = c
-    sendNotif("Accent color changed")
+-- ══════════════════
+-- PERSONALIZE TAB
+-- ══════════════════
+local personalizePage = makeTabPage("Personalize", 600)
+makeSection(personalizePage, "ACCENT COLOR", 14)
+makeColorPicker(personalizePage, "Changes buttons, sliders, toggles", 38, function(c)
+    THEME.accent = c
+    THEME.toggleOn = c
+    sendNotif("Accent changed")
 end)
 
-makeColorPicker(settingsPage, "Button Color", 648, function(c)
-    THEME.btn = c
-    sendNotif("Button color changed")
-end)
-
-makeColorPicker(settingsPage, "Background Color", 696, function(c)
+makeSection(personalizePage, "BACKGROUND COLOR", 90)
+makeColorPicker(personalizePage, "Main background", 114, function(c)
     THEME.bg = c
-    frame.BackgroundColor3 = c
-    sendNotif("Background color changed")
+    TweenService:Create(frame, TweenInfo.new(0.2), {BackgroundColor3 = c}):Play()
+    sendNotif("Background changed")
 end)
 
-makeColorPicker(settingsPage, "Text Color", 744, function(c)
+makeSection(personalizePage, "CARD COLOR", 166)
+makeColorPicker(personalizePage, "Row and card backgrounds", 190, function(c)
+    THEME.card = c
+    sendNotif("Card color changed")
+end)
+
+makeSection(personalizePage, "TEXT COLOR", 242)
+makeColorPicker(personalizePage, "Main text color", 266, function(c)
     THEME.text = c
     titleLabel.TextColor3 = c
     sendNotif("Text color changed")
 end)
+
+makeSection(personalizePage, "PANEL COLOR", 318)
+makeColorPicker(personalizePage, "Title bar and tab bar", 342, function(c)
+    THEME.panel = c
+    titleBar.BackgroundColor3 = c
+    titleFix.BackgroundColor3 = c
+    sendNotif("Panel color changed")
+end)
+
+makeSection(personalizePage, "BORDER COLOR", 394)
+makeColorPicker(personalizePage, "Outlines and dividers", 418, function(c)
+    THEME.border = c
+    frameBorder.Color = c
+    divider.BackgroundColor3 = c
+    sendNotif("Border color changed")
+end)
+
 -- ══════════════════
 -- TOGGLE BUTTON + ANIM
 -- ══════════════════
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 130, 0, 32)
-toggleBtn.Position = UDim2.new(0.5, -65, 0, 10)
+toggleBtn.Size = UDim2.new(0, 110, 0, 28)
+toggleBtn.Position = UDim2.new(0.5, -55, 0, 8)
 toggleBtn.BackgroundColor3 = THEME.panel
-toggleBtn.TextColor3 = THEME.text
+toggleBtn.TextColor3 = THEME.subtext
 toggleBtn.Text = "Ike's Script"
 toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.TextSize = 12
+toggleBtn.TextSize = 11
 toggleBtn.BorderSizePixel = 0
 toggleBtn.ZIndex = 10
 toggleBtn.Parent = screenGui
-Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
 local tgs = Instance.new("UIStroke")
-tgs.Color = THEME.accent
-tgs.Thickness = 1.5
+tgs.Color = THEME.border
+tgs.Thickness = 1
 tgs.Parent = toggleBtn
 
 function openGui()
     guiOpen = true
     frame.Visible = true
-    frame.Size = UDim2.new(0, 420, 0, 0)
-    local style = Enum.EasingStyle[currentOpenStyle] or Enum.EasingStyle.Back
+    frame.Size = UDim2.new(0, 380, 0, 0)
+    frame.BackgroundTransparency = 1
+    local style = Enum.EasingStyle[currentOpenStyle] or Enum.EasingStyle.Quint
     TweenService:Create(frame, TweenInfo.new(openSpeedVal, style, Enum.EasingDirection.Out),
-        {Size = UDim2.new(0, 420, 0, 500)}):Play()
+        {Size = UDim2.new(0, 380, 0, 480), BackgroundTransparency = 0}):Play()
     toggleBtn.Text = "Close"
+    toggleBtn.TextColor3 = THEME.text
 end
 
 function closeGui()
     guiOpen = false
-    local style = Enum.EasingStyle[currentCloseStyle] or Enum.EasingStyle.Quad
+    local style = Enum.EasingStyle[currentCloseStyle] or Enum.EasingStyle.Quint
     local t = TweenService:Create(frame, TweenInfo.new(closeSpeedVal, style, Enum.EasingDirection.In),
-        {Size = UDim2.new(0, 420, 0, 0)})
+        {Size = UDim2.new(0, 380, 0, 0), BackgroundTransparency = 1})
     t:Play()
     t.Completed:Connect(function() frame.Visible = false end)
     toggleBtn.Text = "Ike's Script"
+    toggleBtn.TextColor3 = THEME.subtext
 end
 
 frame.Visible = false
@@ -1319,4 +1206,4 @@ toggleBtn.MouseButton1Click:Connect(function()
     if guiOpen then closeGui() else openGui() end
 end)
 
-sendNotif("Ike's Script loaded!")
+sendNotif("Ike's Script loaded!", THEME.accent)
