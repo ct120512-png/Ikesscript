@@ -522,6 +522,9 @@ end)
 -- ══════════════════
 -- FLY TAB
 -- ══════════════════
+-- ══════════════════
+-- FLY TAB
+-- ══════════════════
 local flyPage = makeTabPage("Fly")
 makeSection(flyPage, "Fly", 10)
 
@@ -533,16 +536,23 @@ makeSlider(flyPage, 112, 1, 30, 3, function(val)
     flySpeedLbl.Text = "Fly Speed: " .. string.format("%.1f", flySpeedVal)
 end)
 
+local flyVelocity = nil
+local flyGyro = nil
+
 local function stopFly()
     flying = false
     flyBtn.Text = "Fly: OFF"
     flyBtn.BackgroundColor3 = THEME.btn
     humanoid.PlatformStand = false
     if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-    local bp = rootPart:FindFirstChild("FlyBodyPosition")
-    local bg2 = rootPart:FindFirstChild("FlyBodyGyro")
-    if bp then bp:Destroy() end
-    if bg2 then bg2:Destroy() end
+
+    -- Clean up both old and new fly instances
+    for _, name in ipairs({"FlyBodyPosition", "FlyBodyGyro", "FlyVelocity", "FlyGyro", "FlyAttachment"}) do
+        local obj = rootPart:FindFirstChild(name)
+        if obj then obj:Destroy() end
+    end
+    flyVelocity = nil
+    flyGyro = nil
     sendNotif("Fly OFF")
 end
 
@@ -551,16 +561,50 @@ local function startFly()
     flyBtn.Text = "Fly: ON"
     flyBtn.BackgroundColor3 = THEME.btnActive
     humanoid.PlatformStand = true
-    local bodyPos = Instance.new("BodyPosition")
-    bodyPos.Name = "FlyBodyPosition"
-    bodyPos.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-    bodyPos.Position = rootPart.Position
-    bodyPos.Parent = rootPart
-    local bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.Name = "FlyBodyGyro"
-    bodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-    bodyGyro.CFrame = rootPart.CFrame
-    bodyGyro.Parent = rootPart
+
+    -- Try new API first (works in all games)
+    local success = pcall(function()
+        local attachment = Instance.new("Attachment")
+        attachment.Name = "FlyAttachment"
+        attachment.Parent = rootPart
+
+        local lv = Instance.new("LinearVelocity")
+        lv.Name = "FlyVelocity"
+        lv.Attachment0 = attachment
+        lv.MaxForce = math.huge
+        lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+        lv.VectorVelocity = Vector3.zero
+        lv.Parent = rootPart
+        flyVelocity = lv
+
+        local ao = Instance.new("AlignOrientation")
+        ao.Name = "FlyGyro"
+        ao.Attachment0 = attachment
+        ao.MaxTorque = math.huge
+        ao.MaxAngularVelocity = math.huge
+        ao.Responsiveness = 200
+        ao.CFrame = rootPart.CFrame
+        ao.Parent = rootPart
+        flyGyro = ao
+    end)
+
+    -- Fallback to old API if new one fails
+    if not success or not flyVelocity then
+        pcall(function()
+            local bp = Instance.new("BodyPosition")
+            bp.Name = "FlyBodyPosition"
+            bp.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+            bp.Position = rootPart.Position
+            bp.Parent = rootPart
+
+            local bg = Instance.new("BodyGyro")
+            bg.Name = "FlyBodyGyro"
+            bg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+            bg.CFrame = rootPart.CFrame
+            bg.Parent = rootPart
+        end)
+    end
+
     flyConnection = RunService.Heartbeat:Connect(function()
         if not flying then return end
         local cam = workspace.CurrentCamera
@@ -571,8 +615,22 @@ local function startFly()
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.new(0,1,0) end
-        bodyPos.Position += dir * flySpeedVal
-        bodyGyro.CFrame = cam.CFrame
+
+        local speed = flySpeedVal * 60
+
+        if flyVelocity then
+            -- New API
+            flyVelocity.VectorVelocity = dir * speed
+            if flyGyro then
+                flyGyro.CFrame = cam.CFrame
+            end
+        else
+            -- Old API fallback
+            local bp = rootPart:FindFirstChild("FlyBodyPosition")
+            local bg = rootPart:FindFirstChild("FlyBodyGyro")
+            if bp then bp.Position += dir * flySpeedVal end
+            if bg then bg.CFrame = cam.CFrame end
+        end
     end)
     sendNotif("Fly ON")
 end
@@ -580,7 +638,6 @@ end
 flyBtn.MouseButton1Click:Connect(function()
     if flying then stopFly() else startFly() end
 end)
-
 -- ══════════════════
 -- AIMBOT TAB
 -- ══════════════════
@@ -1108,7 +1165,111 @@ makeSlider(settingsPage, 388, 1, 20, 3, function(val)
     closeSpeedVal = val / 10
     closeSpeedLbl.Text = "Close speed: " .. string.format("%.2f", closeSpeedVal) .. "s"
 end)
+-- Save/Load settings
+makeSection(settingsPage, "Save Settings", 420)
 
+local saveBtn = makeBtn(settingsPage, "Save Current Settings", 454)
+local loadBtn = makeBtn(settingsPage, "Load Saved Settings", 498)
+local saveStatusLbl = makeLabel(settingsPage, "No saved settings found", 542)
+
+local function getSettings()
+    return {
+        walkSpeed = currentSpeed,
+        flySpeed = flySpeedVal,
+        aimbotFOV = aimbotFOV,
+        aimbotSmoothing = aimbotSmoothing,
+        aimbotTarget = aimbotTarget,
+        aimbotHoldMode = aimbotHoldMode,
+        aimbotKey = aimbotKey.Name,
+        lockIndicator = lockIndicatorType,
+        guiKey = guiToggleKey.Name,
+        openStyle = currentOpenStyle,
+        closeStyle = currentCloseStyle,
+    }
+end
+
+local function saveSettings()
+    local ok, err = pcall(function()
+        local data = getSettings()
+        local json = game:GetService("HttpService"):JSONEncode(data)
+        writefile("IkesScript_settings.json", json)
+    end)
+    if ok then
+        saveStatusLbl.Text = "Settings saved!"
+        sendNotif("Settings saved", THEME.green)
+    else
+        saveStatusLbl.Text = "Save failed (executor may not support it)"
+        sendNotif("Save failed", THEME.red)
+    end
+end
+
+local function loadSettings()
+    local ok, err = pcall(function()
+        local json = readfile("IkesScript_settings.json")
+        local data = game:GetService("HttpService"):JSONDecode(json)
+
+        if data.walkSpeed then
+            currentSpeed = data.walkSpeed
+            humanoid.WalkSpeed = currentSpeed
+            speedLbl.Text = "WalkSpeed: " .. currentSpeed
+        end
+        if data.flySpeed then flySpeedVal = data.flySpeed end
+        if data.aimbotFOV then aimbotFOV = data.aimbotFOV end
+        if data.aimbotSmoothing then aimbotSmoothing = data.aimbotSmoothing end
+        if data.aimbotTarget then aimbotTarget = data.aimbotTarget end
+        if data.aimbotHoldMode ~= nil then aimbotHoldMode = data.aimbotHoldMode end
+        if data.aimbotKey then
+            local ok2, key = pcall(function() return Enum.KeyCode[data.aimbotKey] end)
+            if ok2 then aimbotKey = key end
+        end
+        if data.lockIndicator then lockIndicatorType = data.lockIndicator end
+        if data.guiKey then
+            local ok2, key = pcall(function() return Enum.KeyCode[data.guiKey] end)
+            if ok2 then
+                guiToggleKey = key
+                guiKeyLbl.Text = "Current key: " .. data.guiKey
+            end
+        end
+        if data.openStyle then currentOpenStyle = data.openStyle end
+        if data.closeStyle then currentCloseStyle = data.closeStyle end
+    end)
+    if ok then
+        saveStatusLbl.Text = "Settings loaded!"
+        sendNotif("Settings loaded", THEME.green)
+    else
+        saveStatusLbl.Text = "No save file found"
+        sendNotif("No save found", THEME.red)
+    end
+end
+
+saveBtn.MouseButton1Click:Connect(saveSettings)
+loadBtn.MouseButton1Click:Connect(loadSettings)
+
+-- Theme customization
+makeSection(settingsPage, "GUI Customization", 566)
+
+makeColorPicker(settingsPage, "Accent Color", 600, function(c)
+    THEME.btnActive = c
+    THEME.tabActive = c
+    sendNotif("Accent color changed")
+end)
+
+makeColorPicker(settingsPage, "Button Color", 648, function(c)
+    THEME.btn = c
+    sendNotif("Button color changed")
+end)
+
+makeColorPicker(settingsPage, "Background Color", 696, function(c)
+    THEME.bg = c
+    frame.BackgroundColor3 = c
+    sendNotif("Background color changed")
+end)
+
+makeColorPicker(settingsPage, "Text Color", 744, function(c)
+    THEME.text = c
+    titleLabel.TextColor3 = c
+    sendNotif("Text color changed")
+end)
 -- ══════════════════
 -- TOGGLE BUTTON + ANIM
 -- ══════════════════
