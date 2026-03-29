@@ -432,6 +432,9 @@ makeTab("Settings", 5)
 -- ══════════════════
 -- MISC TAB
 -- ══════════════════
+-- ══════════════════
+-- MISC TAB
+-- ══════════════════
 local miscPage = makeTabPage("Misc")
 makeSection(miscPage, "Movement", 10)
 
@@ -449,19 +452,46 @@ makeSlider(miscPage, 112, 1, 500, 50, function(val)
 end)
 
 makeToggleBtn(miscPage, "Infinite Jump", 136, false, function(v)
+    infJumpEnabled = v
     sendNotif(v and "Inf Jump ON" or "Inf Jump OFF")
 end)
 
-local infJumpEnabled = false
-UserInputService.JumpRequest:Connect(function()
-    if infJumpEnabled and character and humanoid then
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+-- Noclip
+local noclipEnabled = false
+local noclipConnection
+
+makeToggleBtn(miscPage, "Noclip", 178, false, function(v)
+    noclipEnabled = v
+    sendNotif(v and "Noclip ON" or "Noclip OFF")
+    if v then
+        noclipConnection = RunService.Stepped:Connect(function()
+            if noclipEnabled and character then
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
+        end
+        -- Re-enable collision
+        if character then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
     end
 end)
 
-makeSection(miscPage, "Other", 184)
+makeSection(miscPage, "Other", 226)
 
-local resetBtn = makeBtn(miscPage, "Reset Speed and Jump", 216)
+local resetBtn = makeBtn(miscPage, "Reset Speed and Jump", 258)
 resetBtn.MouseButton1Click:Connect(function()
     humanoid.WalkSpeed = 16
     humanoid.JumpPower = 50
@@ -470,7 +500,7 @@ resetBtn.MouseButton1Click:Connect(function()
     sendNotif("Stats reset")
 end)
 
-local unloadBtn = makeBtn(miscPage, "Unload Script", 260)
+local unloadBtn = makeBtn(miscPage, "Unload Script", 302)
 unloadBtn.BackgroundColor3 = THEME.red
 unloadBtn.MouseButton1Click:Connect(function()
     if flying then
@@ -481,6 +511,12 @@ unloadBtn.MouseButton1Click:Connect(function()
         local bg2 = rootPart:FindFirstChild("FlyBodyGyro")
         if bp then bp:Destroy() end
         if bg2 then bg2:Destroy() end
+    end
+    if noclipConnection then noclipConnection:Disconnect() end
+    if character then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = true end
+        end
     end
     humanoid.WalkSpeed = 16
     humanoid.JumpPower = 50
@@ -495,7 +531,6 @@ unloadBtn.MouseButton1Click:Connect(function()
     notifGui:Destroy()
     lockGui:Destroy()
 end)
-
 -- ══════════════════
 -- FLY TAB
 -- ══════════════════
